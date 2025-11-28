@@ -1,20 +1,30 @@
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import spacy
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
 import joblib
 import os
 
 app = FastAPI()
 
-# Load spaCy model
+# Download required NLTK resources
 try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    print("Downloading language model for the spaCy POS tagger")
-    from spacy.cli import download
-    download("en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
+
+try:
+    nltk.data.find('corpora/stopwords')
+except LookupError:
+    nltk.download('stopwords')
+
+try:
+    nltk.data.find('corpora/wordnet')
+except LookupError:
+    nltk.download('wordnet')
 
 # Load the trained model
 MODEL_PATH = "sentiment_model.pkl"
@@ -32,16 +42,24 @@ else:
 class SentimentRequest(BaseModel):
     text: str
 
-def preprocess(text):
+def preprocess_text(text):
     """
-    Preprocesses text by removing stop words, punctuation, and lemmatizing.
+    Preprocesses text using NLTK: tokenization, stopword removal, lemmatization.
     """
-    doc = nlp(text.lower())
+    stop_words = set(stopwords.words('english'))
+    lemmatizer = WordNetLemmatizer()
+    
+    # Tokenization & Lowercasing
+    tokens = word_tokenize(text.lower())
+    
+    # Filtering and Lemmatization
     filtered_tokens = [
-        token.lemma_ for token in doc 
-        if not token.is_stop and not token.is_punct and token.is_alpha
+        lemmatizer.lemmatize(word) 
+        for word in tokens 
+        if word.isalnum() and word not in stop_words
     ]
-    return " ".join(filtered_tokens)
+    
+    return ' '.join(filtered_tokens)
 
 @app.post("/analyze")
 async def analyze_sentiment(request: SentimentRequest):
@@ -51,7 +69,7 @@ async def analyze_sentiment(request: SentimentRequest):
         return {"sentiment": sentiment, "score": 0.99, "model": "mock_fallback"}
 
     try:
-        processed_text = preprocess(request.text)
+        processed_text = preprocess_text(request.text)
         prediction = model_pipeline.predict([processed_text])[0]
         # Get probability if possible (LogisticRegression supports predict_proba)
         try:
@@ -59,7 +77,7 @@ async def analyze_sentiment(request: SentimentRequest):
         except:
             proba = 1.0
             
-        return {"sentiment": prediction, "score": float(proba), "model": "custom_spacy_sklearn"}
+        return {"sentiment": prediction, "score": float(proba), "model": "custom_nltk_sklearn"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

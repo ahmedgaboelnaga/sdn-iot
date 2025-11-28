@@ -1,5 +1,8 @@
 import pandas as pd
-import spacy
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
 import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -8,26 +11,40 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score
 import os
 
-# Load spaCy model
+# Download required NLTK resources
 try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    print("Downloading language model for the spaCy POS tagger\n"
-        "(don't worry, this will only happen once)")
-    from spacy.cli import download
-    download("en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
 
-def preprocess(text):
+try:
+    nltk.data.find('corpora/stopwords')
+except LookupError:
+    nltk.download('stopwords')
+
+try:
+    nltk.data.find('corpora/wordnet')
+except LookupError:
+    nltk.download('wordnet')
+
+def preprocess_text(text):
     """
-    Preprocesses text by removing stop words, punctuation, and lemmatizing.
+    Preprocesses text using NLTK: tokenization, stopword removal, lemmatization.
     """
-    doc = nlp(text.lower())
+    stop_words = set(stopwords.words('english'))
+    lemmatizer = WordNetLemmatizer()
+    
+    # Tokenization & Lowercasing
+    tokens = word_tokenize(text.lower())
+    
+    # Filtering and Lemmatization
     filtered_tokens = [
-        token.lemma_ for token in doc 
-        if not token.is_stop and not token.is_punct and token.is_alpha
+        lemmatizer.lemmatize(word) 
+        for word in tokens 
+        if word.isalnum() and word not in stop_words
     ]
-    return " ".join(filtered_tokens)
+    
+    return ' '.join(filtered_tokens)
 
 def train_model():
     print("Loading dataset...")
@@ -39,7 +56,7 @@ def train_model():
 
     print("Preprocessing data (this may take a while)...")
     # Apply preprocessing
-    df['processed_text'] = df['Comment'].apply(preprocess)
+    df['processed_text'] = df['Comment'].apply(preprocess_text)
     
     X = df['processed_text']
     y = df['Emotion']
