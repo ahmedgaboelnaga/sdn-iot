@@ -1,6 +1,8 @@
 import requests
 import sys
 import os
+import cv2
+import numpy as np
 
 def main():
     if len(sys.argv) < 2:
@@ -28,11 +30,32 @@ def main():
             response = requests.post(url, files=files)
         
         if response.status_code == 200:
-            print("[*] Response received. Saving prediction image...")
+            print("[*] Response received:")
+            result = response.json()
+            print(result)
+            
+            # Draw boxes on the image
+            img = cv2.imread(image_path)
+            if img is None:
+                print("[!] Could not read original image to draw boxes.")
+                return
+
+            boxes = result.get("boxes", [])
+            labels = result.get("labels", [])
+            scores = result.get("scores", [])
+            
+            for box, label, score in zip(boxes, labels, scores):
+                x1, y1, x2, y2 = map(int, box)
+                # Draw rectangle
+                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                # Draw label
+                text = f"{label} {score:.2f}"
+                cv2.putText(img, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            
             output_filename = "prediction_result.jpg"
-            with open(output_filename, "wb") as f:
-                f.write(response.content)
-            print(f"[*] Saved prediction to {output_filename}")
+            cv2.imwrite(output_filename, img)
+            print(f"[*] Saved annotated image to {output_filename}")
+            
         else:
             print(f"[!] Error: {response.status_code}")
             print(response.text)

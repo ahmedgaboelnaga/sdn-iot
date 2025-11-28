@@ -1,5 +1,6 @@
 
 *.pkl
 *.pt
+prediction_result.jpg
 __pycache__/
 .ipynb_checkpoints/

@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import Response
+from pydantic import BaseModel
+from typing import List
 import uvicorn
 import io
 import sys
@@ -16,6 +17,12 @@ except ImportError:
 
 app = FastAPI()
 
+class DetectionResult(BaseModel):
+    boxes: List[List[float]]
+    labels: List[str]
+    scores: List[float]
+    message: str
+
 class TumorDetector:
     def __init__(self, model_path="best.pt"):
         self.model = None
@@ -30,7 +37,7 @@ class TumorDetector:
         else:
             print("[!] Running in MOCK mode (missing library).")
 
-    def predict(self, image_bytes):
+    def predict(self, image_bytes) -> DetectionResult:
         if self.model:
             # Convert bytes to numpy array
             nparr = np.frombuffer(image_bytes, np.uint8)
@@ -40,48 +47,44 @@ class TumorDetector:
             
             if img_np is None:
                 print("[!] Failed to decode image")
-                return image_bytes
+                return DetectionResult(boxes=[], labels=[], scores=[], message="Failed to decode image")
 
             # Run inference
-            # Using model.predict() explicitly as requested
-            # source=img_np passes the loaded image directly
             results = self.model.predict(source=img_np, conf=0.01)
             
-            det_count = len(results[0].boxes)
+            result = results[0]
+            det_count = len(result.boxes)
             print(f"[*] Detections found: {det_count}")
             
-            if det_count == 0:
-                print("[!] Warning: No tumors detected in this image.")
-
-            # Get plotted image (numpy array BGR)
-            # This generates the image with boxes, similar to how save=True works but in memory
-            im_array = results[0].plot(conf=True, labels=True, boxes=True)
+            # Extract data
+            boxes = result.boxes.xyxy.tolist()
+            scores = result.boxes.conf.tolist()
+            # Map class IDs to names
+            labels = [result.names[int(cls)] for cls in result.boxes.cls.tolist()]
             
-            # Encode back to jpg
-            success, encoded_img = cv2.imencode('.jpg', im_array)
+            message = "Tumor detected" if det_count > 0 else "No tumor detected"
             
-            if success:
-                return encoded_img.tobytes()
-            else:
-                print("[!] Failed to encode result image")
-                return image_bytes
+            return DetectionResult(boxes=boxes, labels=labels, scores=scores, message=message)
         else:
-            # Fallback Mock logic if model failed to load
+            # Fallback Mock logic
             print("[!] Using MOCK prediction (Model not active)")
-            return image_bytes
+            return DetectionResult(
+                boxes=[[50.0, 50.0, 200.0, 200.0]], 
+                labels=["tumor_mock"], 
+                scores=[0.95], 
+                message="MOCK RESULT"
+            )
 
 # Initialize model
-# IMPORTANT: Place your 'best.pt' in the same directory as this script
 detector = TumorDetector(model_path="best.pt")
 
-@app.post("/detect")
+@app.post("/detect", response_model=DetectionResult)
 async def detect_tumor(file: UploadFile = File(...)):
     print(f"[*] Received file: {file.filename}")
     content = await file.read()
     
-    image_bytes = detector.predict(content)
-    
-    return Response(content=image_bytes, media_type="image/jpeg")
+    result = detector.predict(content)
+    return result
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)
