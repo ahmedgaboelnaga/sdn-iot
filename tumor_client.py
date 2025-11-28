@@ -28,8 +28,11 @@ def main():
             response = requests.post(url, files=files)
         
         if response.status_code == 200:
-            print("[*] Response received:")
-            print(response.json())
+            print("[*] Response received. Saving prediction image...")
+            output_filename = "prediction_result.jpg"
+            with open(output_filename, "wb") as f:
+                f.write(response.content)
+            print(f"[*] Saved prediction to {output_filename}")
         else:
             print(f"[!] Error: {response.status_code}")
             print(response.text)

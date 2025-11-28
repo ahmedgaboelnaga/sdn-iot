@@ -1,8 +1,10 @@
 from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import Response
 import uvicorn
 import io
-from PIL import Image
 import sys
+import cv2
+import numpy as np
 
 # Try to import YOLO, handle if not installed
 try:
@@ -30,36 +32,43 @@ class TumorDetector:
 
     def predict(self, image_bytes):
         if self.model:
-            # Convert bytes to PIL Image
-            image = Image.open(io.BytesIO(image_bytes))
+            # Convert bytes to numpy array
+            nparr = np.frombuffer(image_bytes, np.uint8)
             
+            # Decode image (BGR) - OpenCV format
+            img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if img_np is None:
+                print("[!] Failed to decode image")
+                return image_bytes
+
             # Run inference
-            results = self.model(image)
+            # Using model.predict() explicitly as requested
+            # source=img_np passes the loaded image directly
+            results = self.model.predict(source=img_np, conf=0.01)
             
-            # Process results (simplified for demo)
-            # Assuming class 0 is 'tumor'
-            has_tumor = False
-            confidence = 0.0
+            det_count = len(results[0].boxes)
+            print(f"[*] Detections found: {det_count}")
             
-            if results and len(results) > 0:
-                # Check boxes
-                for box in results[0].boxes:
-                    # You might need to check box.cls if you have multiple classes
-                    # For now, we assume any detection is a tumor
-                    has_tumor = True
-                    confidence = float(box.conf[0])
-                    break
+            if det_count == 0:
+                print("[!] Warning: No tumors detected in this image.")
+
+            # Get plotted image (numpy array BGR)
+            # This generates the image with boxes, similar to how save=True works but in memory
+            im_array = results[0].plot(conf=True, labels=True, boxes=True)
             
-            return {"has_tumor": has_tumor, "confidence": round(confidence, 2)}
+            # Encode back to jpg
+            success, encoded_img = cv2.imencode('.jpg', im_array)
+            
+            if success:
+                return encoded_img.tobytes()
+            else:
+                print("[!] Failed to encode result image")
+                return image_bytes
         else:
             # Fallback Mock logic if model failed to load
-            import random
             print("[!] Using MOCK prediction (Model not active)")
-            return {
-                "has_tumor": random.choice([True, False]), 
-                "confidence": 0.85, 
-                "note": "MOCK RESULT - Model not loaded"
-            }
+            return image_bytes
 
 # Initialize model
 # IMPORTANT: Place your 'best.pt' in the same directory as this script
@@ -70,13 +79,9 @@ async def detect_tumor(file: UploadFile = File(...)):
     print(f"[*] Received file: {file.filename}")
     content = await file.read()
     
-    result = detector.predict(content)
+    image_bytes = detector.predict(content)
     
-    return {
-        "filename": file.filename,
-        "prediction": result,
-        "message": "Tumor detected" if result["has_tumor"] else "No tumor detected"
-    }
+    return Response(content=image_bytes, media_type="image/jpeg")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)

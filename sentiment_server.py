@@ -65,7 +65,15 @@ def preprocess_text(text):
 async def analyze_sentiment(request: SentimentRequest):
     if not model_pipeline:
         # Fallback mock logic if model is not loaded
-        sentiment = "positive" if "good" in request.text.lower() else "negative"
+        # The dataset contains: anger, fear, joy
+        if "fear" in request.text.lower() or "scared" in request.text.lower():
+            sentiment = "fear"
+        elif "joy" in request.text.lower() or "happy" in request.text.lower() or "good" in request.text.lower():
+            sentiment = "joy"
+        else:
+            # Default to anger for negative/unknown in this simple fallback
+            sentiment = "anger"
+            
         return {"sentiment": sentiment, "score": 0.99, "model": "mock_fallback"}
 
     try:
@@ -83,4 +91,4 @@ async def analyze_sentiment(request: SentimentRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8002)

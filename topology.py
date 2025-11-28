@@ -23,6 +23,10 @@ class ProjectTopology(Topo):
         self.addLink(h3, s1)
         self.addLink(h4, s1)
 
+
+# topos = {'mytopo': MyTopo}
+
+
 def run():
     topo = ProjectTopology()
     # Connect to a remote controller (Ryu running on localhost:6633)
