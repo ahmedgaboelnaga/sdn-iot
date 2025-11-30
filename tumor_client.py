@@ -52,7 +52,7 @@ def main():
                 text = f"{label} {score:.2f}"
                 cv2.putText(img, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             
-            output_filename = "prediction_result.jpg"
+            output_filename = "tumor_detection_result.jpg"
             cv2.imwrite(output_filename, img)
             print(f"[*] Saved annotated image to {output_filename}")
             
